@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: kgct-notifier
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python notice_bot.py
