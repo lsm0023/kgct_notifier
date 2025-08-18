@@ -1,4 +1,4 @@
-# 3notice_bot.py  (KGCT 공지 모니터링: 원샷 실행)
+# 3notice_bot.py  (KGCT 공지 모니터링: 원샷 실행 + 중복 방지 강화)
 import os, json, re, sys, requests
 from bs4 import BeautifulSoup
 
@@ -6,7 +6,7 @@ BOT_TOKEN  = os.environ["TELEGRAM_BOT_TOKEN"]
 CHAT_ID    = os.environ["TELEGRAM_CHAT_ID"]
 
 TARGET_URL = "https://es.kgct.or.kr/es/sim_spot_info?status=2"
-STATE_FILE = "state.json"   # 워크플로가 변경 시 커밋하도록 설정되어 있음
+STATE_FILE = "state.json"
 DEBUG      = os.getenv("DEBUG") == "1"
 BOOTSTRAP  = os.getenv("BOOTSTRAP_ON_START") == "1"
 
@@ -50,7 +50,7 @@ def fetch_latest():
 
     table = soup.select_one("table")
     if not table:
-        if DEBUG: print("[DEBUG] table not found"); 
+        if DEBUG: print("[DEBUG] table not found")
         return None
 
     # 헤더 매핑
@@ -67,12 +67,13 @@ def fetch_latest():
     # 본문 첫 행(최신)
     body_rows = table.select("tbody tr")
     if not body_rows:
-        trs = table.select("tr")
-        body_rows = trs[1:] if len(trs)>1 else []
+        trs = table.select("tr"); body_rows = trs[1:] if len(trs)>1 else []
     if not body_rows: return None
+
     row = body_rows[0]
     if row.find_all("th") and len(body_rows)>1:
         row = body_rows[1]
+
     cells = row.find_all("td") or row.find_all("th")
     if not cells: return None
 
@@ -119,15 +120,27 @@ def main():
 
     # 처음 한 번 강제 발송하고 시작하려면 BOOTSTRAP_ON_START=1 사용
     if BOOTSTRAP and last_key is None:
-        send_message(item["message"], html=True)
+        # 전송 전 '낙관적 잠금'으로 먼저 상태 기록
         save_state({"last_key": item["key"]})
-        if DEBUG: print("[BOOTSTRAP] sent first item")
+        try:
+            send_message(item["message"], html=True)
+            if DEBUG: print("[BOOTSTRAP] sent first item")
+        except Exception:
+            # 실패 시 롤백
+            save_state({"last_key": None})
+            raise
         return 0
 
     if item["key"] != last_key:
-        send_message(item["message"], html=True)
+        # === 중복 방지 핵심: 먼저 상태 저장 → 전송 실패 시 롤백 ===
+        prev = last_key
         save_state({"last_key": item["key"]})
-        if DEBUG: print("[DEBUG] NEW -> sent")
+        try:
+            send_message(item["message"], html=True)
+            if DEBUG: print("[DEBUG] NEW -> sent")
+        except Exception:
+            save_state({"last_key": prev})
+            raise
     else:
         if DEBUG: print("[DEBUG] no change")
     return 0
@@ -138,3 +151,5 @@ if __name__ == "__main__":
     except Exception as e:
         print("[ERROR]", repr(e))
         sys.exit(1)
+
+
