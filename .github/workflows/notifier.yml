@@ -2,7 +2,7 @@ name: KGCT Notifier
 
 on:
   schedule:
-    - cron: "*/10 * * * *"  # 10분마다 실행 (원하는 주기로 수정 가능)
+    - cron: "*/5 * * * *"  # 5분마다 실행 (원하는 주기로 수정 가능)
   workflow_dispatch:        # 수동 실행 버튼도 추가
 
 jobs:
