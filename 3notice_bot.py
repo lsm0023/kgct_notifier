@@ -1,4 +1,4 @@
-# 3notice_bot.py  (KGCT 공지 모니터링: 원샷 실행 + 중복 방지 강화)
+# 3notice_bot.py  (KGCT 공지 모니터링: 원샷 실행 + 번호 변경 감지 옵션)
 import os, json, re, sys, requests
 from bs4 import BeautifulSoup
 
@@ -107,42 +107,56 @@ def fetch_latest():
         if data.get(lab):
             lines.append(f"<b>{lab}</b>: {data[lab]}")
     lines.append(f'<a href="{full}">상세 보기</a>')
-    return {"key": key, "message": "\n".join(lines)}
+
+    return {"key": key, "message": "\n".join(lines), "serial": data.get("번호","")}
 
 def main():
     state = load_state()
-    last_key = state.get("last_key")
+    last_key    = state.get("last_key")
+    last_serial = state.get("last_serial", "")
 
     item = fetch_latest()
     if not item:
         if DEBUG: print("[DEBUG] no item parsed")
         return 0
 
-    # 처음 한 번 강제 발송하고 시작하려면 BOOTSTRAP_ON_START=1 사용
+    # 번호 변경 알림 옵션
+    notify_on_serial_change = os.getenv("NOTIFY_ON_SERIAL_CHANGE") == "1"
+
+    # 부트스트랩: 첫 1회 강제 전송
     if BOOTSTRAP and last_key is None:
-        # 전송 전 '낙관적 잠금'으로 먼저 상태 기록
-        save_state({"last_key": item["key"]})
+        save_state({"last_key": item["key"], "last_serial": item.get("serial","")})
         try:
             send_message(item["message"], html=True)
             if DEBUG: print("[BOOTSTRAP] sent first item")
         except Exception:
-            # 실패 시 롤백
-            save_state({"last_key": None})
+            save_state({"last_key": None, "last_serial": ""})
             raise
         return 0
 
     if item["key"] != last_key:
-        # === 중복 방지 핵심: 먼저 상태 저장 → 전송 실패 시 롤백 ===
-        prev = last_key
-        save_state({"last_key": item["key"]})
+        # === 진짜 새 공지 ===
+        prev_key, prev_serial = last_key, last_serial
+        save_state({"last_key": item["key"], "last_serial": item.get("serial","")})
         try:
             send_message(item["message"], html=True)
             if DEBUG: print("[DEBUG] NEW -> sent")
         except Exception:
-            save_state({"last_key": prev})
+            save_state({"last_key": prev_key, "last_serial": prev_serial})
             raise
     else:
-        if DEBUG: print("[DEBUG] no change")
+        # === 같은 공지인데 번호만 변경 ===
+        if notify_on_serial_change and item.get("serial","") != last_serial:
+            prev_key, prev_serial = last_key, last_serial
+            save_state({"last_key": last_key, "last_serial": item.get("serial","")})
+            try:
+                send_message("♻️ <b>공지 번호가 변경되었습니다</b>\n" + item["message"], html=True)
+                if DEBUG: print("[DEBUG] SERIAL-CHANGE -> sent")
+            except Exception:
+                save_state({"last_key": prev_key, "last_serial": prev_serial})
+                raise
+        else:
+            if DEBUG: print("[DEBUG] no change")
     return 0
 
 if __name__ == "__main__":
@@ -151,5 +165,3 @@ if __name__ == "__main__":
     except Exception as e:
         print("[ERROR]", repr(e))
         sys.exit(1)
-
-
