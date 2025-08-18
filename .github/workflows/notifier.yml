@@ -32,7 +32,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
           DEBUG: "1"
-          BOOTSTRAP_ON_START: "0"
+          BOOTSTRAP_ON_START: "1"
           NOTIFY_ON_SERIAL_CHANGE: "1"   # ← 번호만 바뀌어도 알림 (끄려면 "0")
         run: python 3notice_bot.py
 
