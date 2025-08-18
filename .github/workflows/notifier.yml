@@ -29,7 +29,7 @@ jobs:
           TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
           DEBUG: "1"
           BOOTSTRAP_ON_START: "0"
-        run: python 2notice_bot.py     # ← 여기만 변경!
+        run: python 3notice_bot.py     # ← 여기만 변경!
       
       - name: Commit state if changed
         run: |
